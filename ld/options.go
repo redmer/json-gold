@@ -21,9 +21,9 @@ const (
 	JsonLd_1_1       = "json-ld-1.1"              //nolint:stylecheck
 	JsonLd_1_1_Frame = "json-ld-1.1-expand-frame" //nolint:stylecheck
 
-	EmbedLast   = "@last"
-	EmbedAlways = "@always"
-	EmbedNever  = "@never"
+	EmbedOnce   Embed = "@once"
+	EmbedAlways Embed = "@always"
+	EmbedNever  Embed = "@never"
 )
 
 // JsonLdOptions type as specified in the JSON-LD-API specification:
@@ -43,14 +43,14 @@ type JsonLdOptions struct { //nolint:stylecheck
 	// http://www.w3.org/TR/json-ld-api/#widl-JsonLdOptions-documentLoader
 	DocumentLoader DocumentLoader
 
-	// Frame options: http://json-ld.org/spec/latest/json-ld-framing/
-
+	// Frame options: https://www.w3.org/TR/json-ld-framing/#jsonldoptions
 	Embed        Embed
 	Explicit     bool
-	RequireAll   bool
 	FrameDefault bool
 	OmitDefault  bool
 	OmitGraph    bool
+	Ordered      bool
+	RequireAll   bool
 
 	// RDF conversion options: http://www.w3.org/TR/json-ld-api/#serialize-rdf-as-json-ld-algorithm
 
@@ -75,7 +75,7 @@ func NewJsonLdOptions(base string) *JsonLdOptions { //nolint:stylecheck
 		CompactArrays:         true,
 		ProcessingMode:        JsonLd_1_1,
 		DocumentLoader:        NewDefaultDocumentLoader(nil),
-		Embed:                 EmbedLast,
+		Embed:                 EmbedOnce,
 		Explicit:              false,
 		RequireAll:            true,
 		FrameDefault:          false,
