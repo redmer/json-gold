@@ -48,7 +48,7 @@ type FramingContext struct {
 // NewFramingContext creates and returns as new framing context.
 func NewFramingContext(opts *JsonLdOptions) *FramingContext {
 	context := &FramingContext{
-		embed:        EmbedLast,
+		embed:        EmbedOnce,
 		explicit:     false,
 		requireAll:   false,
 		omitDefault:  false,
@@ -239,9 +239,9 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 		}
 
 		// 5.4
-		// Otherwise, if embed is @last, remove any existing embedded node from parent associated
+		// Otherwise, if embed is @once, remove any existing embedded node from parent associated
 		// with graph name in state. Requires sorting of subjects.
-		if embed == EmbedLast {
+		if embed == EmbedOnce {
 			if _, containsID := state.uniqueEmbeds[state.graph][id]; containsID {
 				removeEmbed(state, id)
 			}
@@ -550,7 +550,7 @@ func getFrameEmbed(frame map[string]interface{}, theDefault Embed) (Embed, error
 	}
 	if boolVal, isBoolean := value.(bool); isBoolean {
 		if boolVal {
-			return EmbedLast, nil
+			return EmbedOnce, nil
 		} else {
 			return EmbedNever, nil
 		}
@@ -564,14 +564,14 @@ func getFrameEmbed(frame map[string]interface{}, theDefault Embed) (Embed, error
 			return EmbedAlways, nil
 		case "@never":
 			return EmbedNever, nil
-		case "@last":
-			return EmbedLast, nil
+		case "@once":
+			return EmbedOnce, nil
 		default:
-			return EmbedLast, NewJsonLdError(InvalidEmbedValue,
+			return EmbedOnce, NewJsonLdError(InvalidEmbedValue,
 				fmt.Sprintf("Invalid JSON-LD frame syntax; invalid value of @embed: %s", stringVal))
 		}
 	}
-	return EmbedLast, NewJsonLdError(InvalidEmbedValue, "Invalid JSON-LD frame syntax; invalid value of @embed")
+	return EmbedOnce, NewJsonLdError(InvalidEmbedValue, "Invalid JSON-LD frame syntax; invalid value of @embed")
 }
 
 // removeEmbed removes an existing embed with the given id.
