@@ -80,7 +80,7 @@ func NewJsonLdOptions(base string) *JsonLdOptions { //nolint:stylecheck
 		RequireAll:            true,
 		FrameDefault:          false,
 		OmitDefault:           false,
-		OmitGraph:             false,
+		OmitGraph:             true,
 		Ordered:               false,
 		UseRdfType:            false,
 		UseNativeTypes:        false,
