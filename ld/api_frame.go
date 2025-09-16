@@ -214,11 +214,7 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 	// 4.
 	// For each id and associated node object node from the set of matched subjects, ordered
 	// lexicographically by id if the optional ordered flag is true:
-	keys := GetKeys(matches)
-	if state.ordered {
-		keys = GetOrderedKeys(matches)
-	}
-	for _, id := range keys {
+	for _, id := range GetOrderedKeys(matches) {
 
 		// Note: In order to treat each top-level match as a
 		// compartmentalized result, clear the unique embedded subjects map
@@ -383,11 +379,7 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 		// 4.7
 		// For each property and objects in node, ordered lexicographically by property if the
 		// optional ordered flag is true:
-		subject_props := GetKeys(subject)
-		if state.ordered {
-			subject_props = GetOrderedKeys(subject)
-		}
-		for _, prop := range subject_props {
+		for _, prop := range GetOrderedKeys(subject) {
 			// 4.7.1
 			// If property is a keyword, add property and objects to output.
 			if IsKeyword(prop) {
