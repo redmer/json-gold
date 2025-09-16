@@ -33,9 +33,11 @@ type StackNode struct {
 // FramingContext stores framing state
 type FramingContext struct {
 	embed        Embed
+	embedded     bool
 	explicit     bool
 	requireAll   bool
 	omitDefault  bool
+	ordered      bool
 	uniqueEmbeds map[string]map[string]*EmbedNode
 	graphMap     map[string]interface{}
 	subjects     map[string]interface{}
@@ -49,9 +51,11 @@ type FramingContext struct {
 func NewFramingContext(opts *JsonLdOptions) *FramingContext {
 	context := &FramingContext{
 		embed:        EmbedOnce,
+		embedded:     false,
 		explicit:     false,
 		requireAll:   false,
 		omitDefault:  false,
+		ordered:      false,
 		uniqueEmbeds: make(map[string]map[string]*EmbedNode),
 		graphMap: map[string]interface{}{
 			"@default": make(map[string]interface{}),
@@ -67,6 +71,7 @@ func NewFramingContext(opts *JsonLdOptions) *FramingContext {
 		context.explicit = opts.Explicit
 		context.requireAll = opts.RequireAll
 		context.omitDefault = opts.OmitDefault
+		context.ordered = opts.Ordered
 	}
 
 	return context
@@ -206,9 +211,14 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 		return nil, err
 	}
 
-	// 5.
-	// For each id and associated node object node from the set of matched subjects, ordered by id:
-	for _, id := range GetOrderedKeys(matches) {
+	// 4.
+	// For each id and associated node object node from the set of matched subjects, ordered
+	// lexicographically by id if the optional ordered flag is true:
+	keys := GetKeys(matches)
+	if state.ordered {
+		keys = GetOrderedKeys(matches)
+	}
+	for _, id := range keys {
 
 		// Note: In order to treat each top-level match as a
 		// compartmentalized result, clear the unique embedded subjects map
@@ -221,6 +231,7 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 			state.uniqueEmbeds[state.graph] = make(map[string]*EmbedNode)
 		}
 
+		// 4.1
 		// Initialize output to a new dictionary with @id and id
 		output := make(map[string]interface{})
 		output["@id"] = id
@@ -230,15 +241,45 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 			AddValue(state.bnodeMap, id, output, true, false, true, false)
 		}
 
-		// 5.3
-		// Otherwise, if embed is @never or if a circular reference would be created by an embed,
-		// add output to parent and do not perform additional processing for this node.
-		if embed == EmbedNever || createsCircularReference(id, state.graph, state) {
-			parent = addFrameOutput(parent, property, output)
-			continue
+		// 4.2
+		// If the embedded flag in state is false and there is an existing embedded node in parent
+		// associated with graph name and id in state, do not perform additional processing for
+		// this node.
+		if !state.embedded {
+			if embeds, ok := state.uniqueEmbeds[state.graph]; ok {
+				if _, exists := embeds[id]; exists {
+					continue
+				}
+			}
 		}
 
-		// 5.4
+		// 4.3
+		// Otherwise, if the embedded flag in state is true and either embed is @never
+		// or if a circular reference would be created by an embed,
+		// add output to parent and do not perform additional processing for this node.
+		if state.embedded {
+			if embed == EmbedNever || createsCircularReference(id, state.graph, state) {
+				parent = addFrameOutput(parent, property, output)
+				continue
+			}
+		}
+
+		// 4.4
+		// Otherwise, if the embedded flag in state is true, embed is @once, and there is an
+		// existing embedded node in parent associated with graph name and id in state, add output
+		// to parent and do not perform additional processing for this node.
+		if state.embedded {
+			if embed == EmbedOnce {
+				if embeds, ok := state.uniqueEmbeds[state.graph]; ok {
+					if _, exists := embeds[id]; exists {
+						parent = addFrameOutput(parent, property, output)
+						continue
+					}
+				}
+
+			}
+		}
+
 		// Otherwise, if embed is @once, remove any existing embedded node from parent associated
 		// with graph name in state. Requires sorting of subjects.
 		if embed == EmbedOnce {
@@ -258,14 +299,22 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 			graph:   state.graph,
 		})
 
+		// 4.5
+		// If graph map in state has an entry for id:
 		// subject is also the name of a graph
 		if _, isAlsoGraph := state.graphMap[id]; isAlsoGraph {
+			// 4.5.1
+			// If frame does not have a @graph entry, set recurse to true,
+			// unless graph name in state is @merged and set subframe to a new empty map.
 			var recurse bool
 			var subframe map[string]interface{}
 			if _, hasGraph := frame["@graph"]; !hasGraph {
 				recurse = state.graph != "@merged"
 				subframe = make(map[string]interface{})
 			} else {
+				// 4.5.2
+				// Otherwise, set subframe to the first entry for @graph in frame, or a new empty map,
+				// if it does not exist, and set recurse to true, unless id is @merged or @default.
 				if v, isMap := frame["@graph"].([]interface{})[0].(map[string]interface{}); isMap {
 					subframe = v
 				} else {
@@ -274,23 +323,73 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 				recurse = !(id == "@merged" || id == "@default")
 			}
 
+			// 4.5.3
+			// If recurse is true:
 			if recurse {
 				state.graphStack = append(state.graphStack, state.graph)
+				// 4.5.3.1
+				// Set the value of graph name in state to id.
 				state.graph = id
+
+				// 4.5.3.2
+				// Set the value of embedded flag in state to false.
+				state_embedded := state.embedded
+				state.embedded = false
+
+				// 4.5.3.3
+				// Invoke the algorithm using a copy of state with the value of graph name set to
+				// id and the value of embedded flag set to false, the keys from the graph map in
+				// state associated with id as subjects, subframe as frame, output as parent,
+				// and @graph as active property.
+
 				// recurse into graph
 				subjects := GetOrderedKeys(state.graphMap[state.graph].(map[string]interface{}))
 				if _, err = api.matchFrame(state, subjects, subframe, output, "@graph"); err != nil {
 					return nil, err
 				}
 				// reset to current graph
+				state.embedded = state_embedded // TODO: is this required?
 				state.graph = state.graphStack[len(state.graphStack)-1]
 				state.graphStack = state.graphStack[:len(state.graphStack)-1]
 			}
 		}
 
-		// iterate over subject properties in order
-		for _, prop := range GetOrderedKeys(subject) {
-			// if property is a keyword, add property and objects to output.
+		// 4.6
+		// If frame has an @included entry, invoke the algorithm using a copy of state with the
+		// value of embedded flag set to false, subjects, frame, output as parent,
+		// and @included as active property.
+		// FIXME: The specification is syntactically incomplete.
+		//        Below implementation reads as if "set to false, included as subjects"
+		if _, hasIncluded := frame["@included"]; hasIncluded {
+			var included []interface{}
+			included = Arrayify(frame["@included"])
+
+			for _, i := range included {
+				state_embedded := state.embedded
+				state.embedded = false
+				includeMap, ok := i.(map[string]interface{})
+				if !ok {
+					return nil, fmt.Errorf("expected map[string]interface{} in @included, got %T", i)
+				}
+				include_subjects := GetOrderedKeys(includeMap)
+				if _, err = api.matchFrame(state, include_subjects, frame, output, "@included"); err != nil {
+					return nil, err
+				}
+				// reset to current graph
+				state.embedded = state_embedded
+			}
+		}
+
+		// 4.7
+		// For each property and objects in node, ordered lexicographically by property if the
+		// optional ordered flag is true:
+		subject_props := GetKeys(subject)
+		if state.ordered {
+			subject_props = GetOrderedKeys(subject)
+		}
+		for _, prop := range subject_props {
+			// 4.7.1
+			// If property is a keyword, add property and objects to output.
 			if IsKeyword(prop) {
 				output[prop] = CloneDocument(subject[prop])
 
@@ -305,18 +404,23 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 				continue
 			}
 
-			// explicit is on and property isn't in frame, skip processing
+			// 4.7.2
+			// Otherwise, if property is not in frame, and explicit is true,
+			// processors MUST NOT add any values for property to output, and the following steps are skipped.
 			framePropVal, containsProp := frame[prop]
 			if explicitOn && !containsProp {
 				continue
 			}
 
 			// add objects
-			// 5.5.2.3 For each item in objects:
+			// 4.7.3 For each item in objects:
 			for _, item := range subject[prop].([]interface{}) {
 				itemMap, isMap := item.(map[string]interface{})
 				listValue, hasList := itemMap["@list"]
 				if isMap && hasList {
+					// 4.7.3.1
+					// If item is a map with the property @list, then each listitem in the list is
+					// processed in sequence and added to a new list map in output:
 					// add empty list
 					list := map[string]interface{}{
 						"@list": make([]interface{}, 0),
@@ -325,6 +429,15 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 
 					// add list objects
 					for _, listitem := range listValue.([]interface{}) {
+						// 4.7.3.1.1
+						// If listitem is a node reference, invoke the algorithm using a copy of
+						// state with the value of embedded flag set to true, the value of @id from
+						// listitem as the sole item in a new subjects array, the first value from
+						// @list in frame as frame, list as parent, and @list as active property.
+						//
+						// If frame does not exist, create a new frame using a new map with
+						// properties for @embed, @explicit and @requireAll taken from embed,
+						// explicit and requireAll.
 						if IsSubjectReference(listitem) {
 							// recurse into subject reference
 							itemid := listitem.(map[string]interface{})["@id"].(string)
@@ -335,18 +448,33 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 							} else {
 								subframe = flags
 							}
+							state_embedded := state.embedded
+							state.embedded = true
 							res, err := api.matchFrame(state, []string{itemid}, subframe, list, "@list")
 							if err != nil {
 								return nil, err
 							}
+							// reset to current graph
+							state.embedded = state_embedded
 							list = res.(map[string]interface{})
 						} else {
+							// 4.7.3.1.2
+							// Otherwise, append a copy of listitem to @list in list.
 							// include other values automatically (TODO:
 							// may need Clone(n)
 							addFrameOutput(list, "@list", listitem)
 						}
 					}
 				} else {
+					// 4.7.3.2
+					// If item is a node reference, invoke the algorithm using a copy of state with
+					// the value of embedded flag set to true, the value of @id from item as the
+					// sole item in a new subjects array, the first value from property in frame as
+					// frame, output as parent, and property as active property.
+					//
+					// If frame does not exist, create a new frame using a new map with properties
+					// for @embed, @explicit and @requireAll taken from embed, explicit and requireAll.
+
 					var subframe map[string]interface{}
 					if containsProp {
 						subframe = framePropVal.([]interface{})[0].(map[string]interface{})
@@ -356,11 +484,17 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 
 					if IsSubjectReference(item) { // recurse into subject reference
 						itemid := itemMap["@id"].(string)
-
+						state_embedded := state.embedded
+						state.embedded = true
 						if _, err = api.matchFrame(state, []string{itemid}, subframe, output, prop); err != nil {
 							return nil, err
 						}
+						// reset to current graph
+						state.embedded = state_embedded
+
 					} else if valueMatch(subframe, itemMap) {
+						// 4.7.3.3
+						// Otherwise, append a copy of item to active property in output.
 						addFrameOutput(output, prop, CloneDocument(item))
 					}
 				}
@@ -368,9 +502,12 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 
 		}
 
+		// 4.7.4
+		// For each non-keyword property and objects in frame (other than `@type) that is not in output:
 		// handle defaults
 		for _, prop := range GetOrderedKeys(frame) {
 			// skip keywords
+			// TODO: Unless it's @type ?
 			if IsKeyword(prop) {
 				continue
 			}
@@ -399,6 +536,10 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 				}
 			}
 		}
+
+		// 4.7.5
+		// If frame has the property @reverse, then for each reverse property and sub frame that
+		// are the values of @reverse in frame:
 
 		// embed reverse values by finding nodes having this subject as a
 		// value of the associated property
@@ -662,6 +803,8 @@ func FilterSubjects(state *FramingContext, subjects []string, frame map[string]i
 //
 // Otherwise, does duck typing, where the node must have all of the
 // properties defined in the frame.
+//
+// https://www.w3.org/TR/json-ld-framing/#frame-matching
 func FilterSubject(state *FramingContext, subject map[string]interface{}, frame map[string]interface{}, requireAll bool) (bool, error) {
 	// check ducktype
 	wildcard := true
@@ -853,12 +996,20 @@ func nodeMatch(state *FramingContext, pattern, value map[string]interface{}, req
 //   - @languages are the same or `value[@language]` is not None
 //     and `pattern[@language]` is `{}`, or `value[@language]` is None
 //     and `pattern[@language]` is None or `[]`
+//
+// https://www.w3.org/TR/json-ld-framing/#value-matching
 func valueMatch(pattern, value map[string]interface{}) bool {
+	// 2.
+	// Let v2, t2, and l2 be the values of @value, @type, and @language in value pattern, or null
+	// if none exists, where string values of @language are normalized to lower case..
+
 	v2v := pattern["@value"]
 	t2v := pattern["@type"]
 	l2v := pattern["@language"]
 
-	if v2v == nil && t2v == nil && l2v == nil {
+	// 3.
+	// Value matches pattern when pattern is wildcard, or
+	if isEmptyObject(pattern) || (v2v == nil && t2v == nil && l2v == nil) {
 		return true
 	}
 
@@ -875,18 +1026,27 @@ func valueMatch(pattern, value map[string]interface{}) bool {
 		l2 = Arrayify(l2v)
 	}
 
+	// 1.
+	// Let v1, t1, and l1 be the values of @value, @type, and @language in value, or null if none
+	// exists, where values of @language are normalized to lower case..
 	v1 := value["@value"]
 	t1 := value["@type"]
 	l1 := value["@language"]
 
+	// 3.1.
+	// v1 is in v2, or v1 is not null and v2 is wildcard, and
 	if !(inArray(v1, v2) || (len(v2) > 0 && isEmptyObject(v2[0]))) {
 		return false
 	}
 
+	// 3.2
+	// t1 is in t2, or t1 is not null and t2 is wildcard, or null, or t1 is null and t2 is null or match none, and
 	if !((t1 == nil && len(t2) == 0) || (inArray(t1, t2)) || (t1 != nil && len(t2) > 0 && isEmptyObject(t2[0]))) {
 		return false
 	}
 
+	// 3.3
+	// l1 is in l2, or l1 is not null and l2 is wildcard, or null, or l1 is null and l2 is null or match none.
 	if !((l1 == nil && len(l2) == 0) || (inArray(l1, l2)) || (l1 != nil && len(l2) > 0 && isEmptyObject(l2[0]))) {
 		return false
 	}

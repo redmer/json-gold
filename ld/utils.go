@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"reflect"
 	"sort"
 	"strings"
 )
@@ -323,13 +324,14 @@ func (s ShortestLeast) Less(i, j int) bool {
 
 func inArray(v interface{}, array []interface{}) bool {
 	for _, x := range array {
-		if v == x {
+		if reflect.DeepEqual(v, x) {
 			return true
 		}
 	}
 	return false
 }
 
+// Also called Wildcard https://www.w3.org/TR/json-ld-framing/#dfn-wildcard
 func isEmptyObject(v interface{}) bool {
 	vMap, isMap := v.(map[string]interface{})
 	return isMap && len(vMap) == 0
