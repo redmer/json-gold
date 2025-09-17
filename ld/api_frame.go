@@ -796,14 +796,23 @@ func FilterSubjects(state *FramingContext, subjects []string, frame map[string]i
 // Otherwise, does duck typing, where the node must have all of the
 // properties defined in the frame.
 //
-// https://www.w3.org/TR/json-ld-framing/#frame-matching
+// Algorithm steps from: https://www.w3.org/TR/json-ld-framing/#frame-matching
 func FilterSubject(state *FramingContext, subject map[string]interface{}, frame map[string]interface{}, requireAll bool) (bool, error) {
 	// check ducktype
 	wildcard := true
 	matchesSome := false
 	matchThis := false
 
+	// 1
+	// node matches if frame has no properties.
+	if isEmptyObject(frame) {
+		return true, nil
+	}
+
+	// 2
+	// For the values of each property from frame in node:
 	for _, k := range GetOrderedKeys(frame) {
+		matchThis = false
 		v := frame[k]
 
 		var nodeValues []interface{}
@@ -824,8 +833,13 @@ func FilterSubject(state *FramingContext, subject map[string]interface{}, frame 
 			}
 			wildcard = true
 
+			// 2.1
+			// If property is @id:
 			// check @id for a specific @id value
 			if k == "@id" {
+				// 2.1.1
+				// property matches if the @id property in frame includes any IRI in values.
+				//
 				// if @id is not a wildcard and is not empty, then match
 				// or not on specific value
 				frameID := Arrayify(frame["@id"])
@@ -838,6 +852,9 @@ func FilterSubject(state *FramingContext, subject map[string]interface{}, frame 
 				matchThis = true
 				continue
 			}
+
+			// 2.2
+			// Otherwise, if property is @type:
 
 			// check @type (object value means 'any' type, fall through to
 			// ducktyping)
@@ -887,6 +904,11 @@ func FilterSubject(state *FramingContext, subject map[string]interface{}, frame 
 		// properties
 		wildcard = false
 
+		// 2.5 ?
+		// property matches if values is empty, or non existent,
+		// the value of property in frame is a map containing only the @default entry with any value,
+		// and any other property in node has a non-default match.
+
 		// skip, but allow match if node has no value for property, and
 		// frame has a default value
 		if len(nodeValues) == 0 && hasDefault {
@@ -899,6 +921,7 @@ func FilterSubject(state *FramingContext, subject map[string]interface{}, frame 
 		}
 
 		if thisFrame == nil {
+			// 2.6
 			// node does not match if values is not empty and the value of
 			// property in frame is match none.
 			if len(nodeValues) > 0 {
@@ -906,10 +929,14 @@ func FilterSubject(state *FramingContext, subject map[string]interface{}, frame 
 			}
 			matchThis = true
 		} else if _, isMap := thisFrame.(map[string]interface{}); isMap {
+			// 2.7
 			// node matches if values is not empty and the value of
 			// property in frame is wildcard
 			matchThis = len(nodeValues) > 0
 		} else {
+			// 2.8
+			// Otherwise, if the value of property in frame is a value pattern (value pattern):
+			// property matching is determined using the Value matching algorithm.
 			if IsValue(thisFrame) {
 				for _, nv := range nodeValues {
 					if valueMatch(thisFrame.(map[string]interface{}), nv.(map[string]interface{})) {
@@ -942,6 +969,9 @@ func FilterSubject(state *FramingContext, subject map[string]interface{}, frame 
 			}
 		}
 
+		// 2
+		// If requireAll is true, node matches if all properties (property) in frame match any of the following conditions.
+		// Or, if requireAll is false, if any of the properties (property) in frame match any of the following conditions.
 		if !matchThis && requireAll {
 			return false, nil
 		}
@@ -1024,6 +1054,8 @@ func valueMatch(pattern, value map[string]interface{}) bool {
 	v1 := value["@value"]
 	t1 := value["@type"]
 	l1 := value["@language"]
+
+	// FIXME: replace isEmptyObject with isWildcard
 
 	// 3.1.
 	// v1 is in v2, or v1 is not null and v2 is wildcard, and
