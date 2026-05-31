@@ -865,7 +865,17 @@ func FilterSubject(state *FramingContext, subject map[string]interface{}, frame 
 				if len(frameID) > 0 {
 					_, isString := frameID[0].(string)
 					if !isEmptyObject(frameID[0]) || isString {
-						return inArray(nodeValues[0], frameID), nil
+						idMatches := inArray(nodeValues[0], frameID)
+						// requireAll needs to be set twice to prevent digressions in
+						// tests #t0012, #tg005, #tg006, #tg008.
+						if requireAll && frame["@requireAll"] != nil {
+							if !idMatches {
+								return false, nil
+							}
+							matchesSome = true
+							continue
+						}
+						return idMatches, nil
 					}
 				}
 				// @id: {} wildcard — counts as a match but must not skip matchesSome
@@ -903,7 +913,15 @@ func FilterSubject(state *FramingContext, subject map[string]interface{}, frame 
 								}
 							}
 						}
-						return len(r) > 0, nil
+						typeMatches := len(r) > 0
+						if requireAll && frame["@requireAll"] != nil {
+							if !typeMatches {
+								return false, nil
+							}
+							matchesSome = true
+							continue
+						}
+						return typeMatches, nil
 					}
 				}
 			}
