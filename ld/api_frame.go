@@ -868,6 +868,9 @@ func FilterSubject(state *FramingContext, subject map[string]interface{}, frame 
 						return inArray(nodeValues[0], frameID), nil
 					}
 				}
+				// @id: {} wildcard — counts as a match but must not skip matchesSome
+				// so that other properties with @default still produce a match overall
+				matchesSome = true
 				matchThis = true
 				continue
 			}
