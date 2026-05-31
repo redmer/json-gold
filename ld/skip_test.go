@@ -85,13 +85,9 @@ var skippedTests = map[string][]string{
 		"#t", // HTML inputs not supported yet
 	},
 	"testdata/frame-manifest.jsonld": {
-		// TODO: all tests below are skipped until we add support for JSON-LD Framing 1.1
-		"#t0058",
-		"#t0059",
-		"#t006",
-		"#tg010",
-		"#tin",
-		"#tra",
+		"#t0064", // @type with @default value in frame requires expansion changes
+		"#t0069", // @json not yet supported
+		"#tin",   // More involved, with @included to pass current subjects instead of frame keys
 	},
 	"testdata/normalization/manifest-urgna2012.jsonld": {
 		"manifest-urgna2012#test060",
