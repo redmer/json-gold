@@ -254,6 +254,21 @@ func IsSimpleGraph(v interface{}) bool {
 	return IsGraph(v) && !containsID
 }
 
+// isBlankNodeGraph returns true if the given value is a @graph whose @id is a blank node identifier.
+// Per JSON-LD 1.1, blank-node-named graphs are treated as simple graphs for @container: @graph.
+func isBlankNodeGraph(v interface{}) bool {
+	vMap, isMap := v.(map[string]interface{})
+	if !isMap || !IsGraph(v) {
+		return false
+	}
+	id, hasID := vMap["@id"]
+	if !hasID {
+		return false
+	}
+	idStr, isStr := id.(string)
+	return isStr && strings.HasPrefix(idStr, "_:")
+}
+
 // IsRelativeIri returns true if the given value is a relative IRI, false if not.
 func IsRelativeIri(value string) bool {
 	return !(IsKeyword(value) || IsAbsoluteIri(value))
