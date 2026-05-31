@@ -21,6 +21,7 @@ const (
 	JsonLd_1_1       = "json-ld-1.1"              //nolint:stylecheck
 	JsonLd_1_1_Frame = "json-ld-1.1-expand-frame" //nolint:stylecheck
 
+	EmbedLast   Embed = "@last"
 	EmbedOnce   Embed = "@once"
 	EmbedAlways Embed = "@always"
 	EmbedNever  Embed = "@never"

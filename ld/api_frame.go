@@ -272,7 +272,17 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 						continue
 					}
 				}
-
+			}
+			// For @last: if we've seen this node before, remove the previous embed
+			// (replacing it with a node reference), then fall through to embed this occurrence.
+			if embed == EmbedLast {
+				if _, containsID := state.uniqueEmbeds[state.graph][id]; containsID {
+					removeEmbed(state, id)
+				}
+				state.uniqueEmbeds[state.graph][id] = &EmbedNode{
+					parent:   parent,
+					property: property,
+				}
 			}
 		}
 
@@ -695,6 +705,8 @@ func getFrameEmbed(frame map[string]interface{}, theDefault Embed) (Embed, error
 		switch stringVal {
 		case "@always":
 			return EmbedAlways, nil
+		case "@last":
+			return EmbedLast, nil
 		case "@never":
 			return EmbedNever, nil
 		case "@once":
@@ -928,45 +940,46 @@ func FilterSubject(state *FramingContext, subject map[string]interface{}, frame 
 				return false, nil
 			}
 			matchThis = true
+		} else if IsValue(thisFrame) {
+			// 2.8
+			// Otherwise, if the value of property in frame is a value pattern (value pattern):
+			// property matching is determined using the Value matching algorithm.
+			// 2.8 as value pattern: must be checked before the generic isMap wildcard,
+			// because value objects are also maps.
+			for _, nv := range nodeValues {
+				if valueMatch(thisFrame.(map[string]interface{}), nv.(map[string]interface{})) {
+					matchThis = true
+					break
+				}
+			}
+		} else if IsList(thisFrame) {
+			// 2.8 as list pattern: must be checked before the generic isMap wildcard,
+			// because list objects are also maps.
+			listValue := thisFrame.(map[string]interface{})["@list"].([]interface{})[0]
+			if len(nodeValues) > 0 && IsList(nodeValues[0]) {
+				nodeListValues := nodeValues[0].(map[string]interface{})["@list"]
+
+				if IsValue(listValue) {
+					for _, lv := range nodeListValues.([]interface{}) {
+						if valueMatch(listValue.(map[string]interface{}), lv.(map[string]interface{})) {
+							matchThis = true
+							break
+						}
+					}
+				} else if IsSubject(listValue) || IsSubjectReference(listValue) {
+					for _, lv := range nodeListValues.([]interface{}) {
+						if nodeMatch(state, listValue.(map[string]interface{}), lv.(map[string]interface{}), requireAll) {
+							matchThis = true
+							break
+						}
+					}
+				}
+			}
 		} else if _, isMap := thisFrame.(map[string]interface{}); isMap {
 			// 2.7
 			// node matches if values is not empty and the value of
 			// property in frame is wildcard
 			matchThis = len(nodeValues) > 0
-		} else {
-			// 2.8
-			// Otherwise, if the value of property in frame is a value pattern (value pattern):
-			// property matching is determined using the Value matching algorithm.
-			if IsValue(thisFrame) {
-				for _, nv := range nodeValues {
-					if valueMatch(thisFrame.(map[string]interface{}), nv.(map[string]interface{})) {
-						matchThis = true
-						break
-					}
-				}
-
-			} else if IsList(thisFrame) {
-				listValue := thisFrame.(map[string]interface{})["@list"].([]interface{})[0]
-				if len(nodeValues) > 0 && IsList(nodeValues[0]) {
-					nodeListValues := nodeValues[0].(map[string]interface{})["@list"]
-
-					if IsValue(listValue) {
-						for _, lv := range nodeListValues.([]interface{}) {
-							if valueMatch(listValue.(map[string]interface{}), lv.(map[string]interface{})) {
-								matchThis = true
-								break
-							}
-						}
-					} else if IsSubject(listValue) || IsSubjectReference(listValue) {
-						for _, lv := range nodeListValues.([]interface{}) {
-							if nodeMatch(state, listValue.(map[string]interface{}), lv.(map[string]interface{}), requireAll) {
-								matchThis = true
-								break
-							}
-						}
-					}
-				}
-			}
 		}
 
 		// 2
