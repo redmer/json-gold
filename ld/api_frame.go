@@ -1003,6 +1003,18 @@ func FilterSubject(state *FramingContext, subject map[string]interface{}, frame 
 					}
 				}
 			}
+		} else if IsSubjectReference(thisFrame) {
+			// specific node reference match: frame value is {"@id": "some-iri"},
+			// so only match nodeValues whose @id equals that IRI.
+			frameRefID := thisFrame.(map[string]interface{})["@id"]
+			for _, nv := range nodeValues {
+				if nvMap, ok := nv.(map[string]interface{}); ok {
+					if nvMap["@id"] == frameRefID {
+						matchThis = true
+						break
+					}
+				}
+			}
 		} else if _, isMap := thisFrame.(map[string]interface{}); isMap {
 			// 2.7
 			// node matches if values is not empty and the value of
