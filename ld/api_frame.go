@@ -160,8 +160,15 @@ func (api *JsonLdApi) mergeNodeMapGraphs(graphs map[string]interface{}) map[stri
 			node := graph[id].(map[string]interface{})
 			for _, property := range GetOrderedKeys(node) {
 				if IsKeyword(property) {
-					// copy keywords
-					mergedNode[property] = CloneDocument(node[property])
+					if property == "@type" {
+						// merge @type arrays across graphs instead of overwriting
+						for _, v := range Arrayify(node[property]) {
+							AddValue(mergedNode, property, CloneDocument(v), true, false, false, false)
+						}
+					} else {
+						// copy other keywords
+						mergedNode[property] = CloneDocument(node[property])
+					}
 				} else {
 					// merge objects
 					for _, v := range node[property].([]interface{}) {
