@@ -37,6 +37,7 @@ func IsKeyword(key interface{}) bool {
 		key == "@direction" ||
 		key == "@embed" ||
 		key == "@explicit" ||
+		key == "@first" ||
 		key == "@json" ||
 		key == "@id" ||
 		key == "@included" ||
@@ -44,6 +45,7 @@ func IsKeyword(key interface{}) bool {
 		key == "@graph" ||
 		key == "@import" ||
 		key == "@language" ||
+		key == "@last" ||
 		key == "@list" ||
 		key == "@nest" ||
 		key == "@never" ||
