@@ -1107,8 +1107,6 @@ func valueMatch(pattern, value map[string]interface{}) bool {
 	t1 := value["@type"]
 	l1 := value["@language"]
 
-	// FIXME: replace isEmptyObject with isWildcard
-
 	// 3.1.
 	// v1 is in v2, or v1 is not null and v2 is wildcard, and
 	if !(inArray(v1, v2) || (len(v2) > 0 && isEmptyObject(v2[0]))) {
