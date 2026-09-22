@@ -346,7 +346,7 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 
 				// 4.5.3.2
 				// Set the value of embedded flag in state to false.
-				state_embedded := state.embedded
+				stateEmbedded := state.embedded
 				state.embedded = false
 
 				// 4.5.3.3
@@ -361,7 +361,7 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 					return nil, err
 				}
 				// reset to current graph
-				state.embedded = state_embedded // TODO: is this required?
+				state.embedded = stateEmbedded // TODO: is this required?
 				state.graph = state.graphStack[len(state.graphStack)-1]
 				state.graphStack = state.graphStack[:len(state.graphStack)-1]
 			}
@@ -374,22 +374,21 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 		// FIXME: The specification is syntactically incomplete.
 		//        Below implementation reads as if "set to false, included as subjects"
 		if _, hasIncluded := frame["@included"]; hasIncluded {
-			var included []interface{}
-			included = Arrayify(frame["@included"])
+			var included = Arrayify(frame["@included"])
 
 			for _, i := range included {
-				state_embedded := state.embedded
+				stateEmbedded := state.embedded
 				state.embedded = false
 				includeMap, ok := i.(map[string]interface{})
 				if !ok {
 					return nil, fmt.Errorf("expected map[string]interface{} in @included, got %T", i)
 				}
-				include_subjects := GetOrderedKeys(includeMap)
-				if _, err = api.matchFrame(state, include_subjects, frame, output, "@included"); err != nil {
+				includeSubjects := GetOrderedKeys(includeMap)
+				if _, err = api.matchFrame(state, includeSubjects, frame, output, "@included"); err != nil {
 					return nil, err
 				}
 				// reset to current graph
-				state.embedded = state_embedded
+				state.embedded = stateEmbedded
 			}
 		}
 
@@ -457,14 +456,14 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 							} else {
 								subframe = flags
 							}
-							state_embedded := state.embedded
+							stateEmbedded := state.embedded
 							state.embedded = true
 							res, err := api.matchFrame(state, []string{itemid}, subframe, list, "@list")
 							if err != nil {
 								return nil, err
 							}
 							// reset to current graph
-							state.embedded = state_embedded
+							state.embedded = stateEmbedded
 							list = res.(map[string]interface{})
 						} else {
 							// 4.7.3.1.2
@@ -493,13 +492,13 @@ func (api *JsonLdApi) matchFrame(state *FramingContext, subjects []string,
 
 					if IsSubjectReference(item) { // recurse into subject reference
 						itemid := itemMap["@id"].(string)
-						state_embedded := state.embedded
+						stateEmbedded := state.embedded
 						state.embedded = true
 						if _, err = api.matchFrame(state, []string{itemid}, subframe, output, prop); err != nil {
 							return nil, err
 						}
 						// reset to current graph
-						state.embedded = state_embedded
+						state.embedded = stateEmbedded
 
 					} else if valueMatch(subframe, itemMap) {
 						// 4.7.3.3
@@ -820,7 +819,6 @@ func FilterSubject(state *FramingContext, subject map[string]interface{}, frame 
 	// check ducktype
 	wildcard := true
 	matchesSome := false
-	matchThis := false
 
 	// 1
 	// node matches if frame has no properties.
@@ -831,7 +829,9 @@ func FilterSubject(state *FramingContext, subject map[string]interface{}, frame 
 	// 2
 	// For the values of each property from frame in node:
 	for _, k := range GetOrderedKeys(frame) {
-		matchThis = false
+		// matchThis records whether this frame property matches the node;
+		// it is re-evaluated fresh for each property in the frame.
+		matchThis := false
 		v := frame[k]
 
 		var nodeValues []interface{}
@@ -881,7 +881,6 @@ func FilterSubject(state *FramingContext, subject map[string]interface{}, frame 
 				// @id: {} wildcard — counts as a match but must not skip matchesSome
 				// so that other properties with @default still produce a match overall
 				matchesSome = true
-				matchThis = true
 				continue
 			}
 
